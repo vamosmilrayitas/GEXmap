@@ -19,7 +19,7 @@ st.title("GEXmap del SPY - Tradeknowlogy")
 yesterday = (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
 
 # Descargar datos de 5 minutos del SPY para el día de ayer
-st.write("Descargando datos de SPY de ayer3...")
+st.write("Descargando datos de SPY de ayer4...")
 spy_data = yf.download('SPY', start=yesterday, end=datetime.now().strftime('%Y-%m-%d'), interval='5m', progress=False)
 
 # Convertir el índice a datetime y filtrar los datos solo para la fecha de ayer
