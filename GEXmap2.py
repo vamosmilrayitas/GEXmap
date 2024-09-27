@@ -1,152 +1,83 @@
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
-
-# Set the title and favicon that appear in the Browser's tab bar.
+# Configurar el modo ancho para la aplicación de Streamlit
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title="Mi aplicación",
+    page_icon=":rocket:",
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
+import yfinance as yf
+import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Título de la aplicación
+st.title("GEXmap del SPY - Tradeknowlogy")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# Obtener la fecha de ayer
+yesterday = (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+# Descargar datos de 5 minutos del SPY para el día de ayer
+st.write("Descargando datos de SPY...")
+spy_data = yf.download('SPY', start=yesterday, end=datetime.now().strftime('%Y-%m-%d'), interval='5m', progress=False)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# Convertir el índice a datetime y filtrar los datos solo para la fecha de ayer
+spy_data.index = pd.to_datetime(spy_data.index)  # Asegurarse de que el índice es de tipo datetime
+spy_data = spy_data[spy_data.index.date == pd.to_datetime(yesterday).date()]
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# Verificar si se obtuvieron datos
+if spy_data.empty:
+    st.write("No se encontraron datos para el día de ayer.")
+else:
+    # Calcular el valor máximo y mínimo de las velas del día de ayer
+    max_price = spy_data['High'].max()
+    min_price = spy_data['Low'].min()
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+    # Calcular los valores de los strikes con un margen de 1.1
+    strike_min = min_price * 0.999  # Reducir el 10%
+    strike_max = max_price * 1.001  # Aumentar el 10%
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    # Generar los strikes en función del rango calculado con un paso de 0.1
+    strikes = np.arange(strike_min, strike_max, 0.1)
 
-    return gdp_df
+    # Crear los intervalos de tiempo y valores ficticios de GEX
+    # Crear los intervalos de tiempo y valores ficticios de GEX
+    time_intervals = pd.date_range(start=f'{yesterday} 09:30', end=f'{yesterday} 16:00', freq='5min')
 
-gdp_df = get_gdp_data()
+    #time_intervals = pd.date_range(start=f'{yesterday} 09:30', end=f'{yesterday} 16:00', freq='5T')
+    gex_values = np.random.randn(len(time_intervals), len(strikes))  # Valores aleatorios de GEX para ejemplo
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+    # Crear el DataFrame de GEX
+    gex_data = pd.DataFrame(gex_values, index=time_intervals, columns=strikes).reset_index()
+    gex_data = gex_data.melt(id_vars=['index'], var_name='Strike', value_name='GEX')
+    gex_data.columns = ['Datetime', 'Strike', 'GEX']
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+    # Crear el gráfico de velas con opacidad ajustada
+    fig = go.Figure(data=[go.Candlestick(x=spy_data.index,
+                                        open=spy_data['Open'],
+                                        high=spy_data['High'],
+                                        low=spy_data['Low'],
+                                        close=spy_data['Close'],
+                                        name='SPY',
+                                        opacity=0.9)])  # Ajusta la opacidad
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+    # Crear el heatmap de GEX con la escala de colores en tonos de azul y personalizado hovertemplate
+    fig.add_trace(go.Heatmap(x=gex_data['Datetime'],
+                                y=gex_data['Strike'],
+                                z=gex_data['GEX'],
+                                colorscale='Blues',  # Escala de colores en tonos de azul
+                                colorbar=dict(title='GEX'),
+                                zmid=0,
+                                hovertemplate='Hora: %{x}<br>Strike: %{y}<br>GEX: %{z}<extra></extra>'))
 
-# Add some spacing
-''
-''
+    # Configurar el diseño del gráfico
+    fig.update_layout(title='SPY GEXmap (Ayer) Tradeknowlogy',
+                        xaxis_title='Hora',
+                        yaxis_title='Precio/Strike',
+                        xaxis_rangeslider_visible=False,
+                        width=10,  # Ancho del gráfico
+                        height=500 )
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
-#   "teste"
+    # Mostrar el gráfico en Streamlit
+    st.plotly_chart(fig, use_container_width=True)
